@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowRight, Trophy, Users, CheckCircle2, Award, Home, Star } from 'lucide-react';
+import { ArrowRight, Trophy, Users, CheckCircle2, Award, Home, Star, RefreshCw } from 'lucide-react';
 
 const QUESTIONS = [
   { id: 1, q: "¿Cuántas islas tiene HK?", options: ["A) más de 200", "B) más de 300", "C) aproximadamente 260", "D) aproximadamente 160"], correct: "C" },
@@ -26,38 +26,89 @@ const QUESTIONS = [
   { id: 20, q: "¿Qué es ilegal hacer en las estaciones de tren de Francia desde 1910?", options: ["A) Hablar", "B) Besarse", "C) Abrazarse", "D) Tirar basura"], correct: "B" }
 ];
 
+const BGS = {
+  FILM: "url('input_file_0.png')",
+  SEATS: "url('input_file_1.png')",
+  CURTAIN: "url('input_file_2.png')"
+};
+
 type GameState = 'START' | 'GROUPS_INTRO' | 'READY' | 'QUESTION' | 'ANSWER' | 'RANKING';
 
+const BulbBorder = ({ children }: { children: React.ReactNode }) => {
+  const bulbPositions = useMemo(() => {
+    const bulbs = [];
+    for (let i = 0; i <= 100; i += 12.5) {
+      bulbs.push({ top: '-10px', left: `${i}%`, delay: Math.random() });
+      bulbs.push({ bottom: '-10px', left: `${i}%`, delay: Math.random() });
+    }
+    for (let i = 12.5; i < 100; i += 25) {
+      bulbs.push({ left: '-10px', top: `${i}%`, delay: Math.random() });
+      bulbs.push({ right: '-10px', top: `${i}%`, delay: Math.random() });
+    }
+    return bulbs;
+  }, []);
+
+  return (
+    <div className="comic-card bg-[#f5e6be] p-10 md:p-14 max-w-4xl w-full mx-4 relative">
+      {bulbPositions.map((pos, idx) => (
+        <div 
+          key={idx} 
+          className="bulb" 
+          style={{ 
+            ...pos, 
+            animationDelay: `${pos.delay}s`,
+            transform: 'translate(-50%, -50%)' 
+          } as React.CSSProperties} 
+        />
+      ))}
+      <div className="relative z-10">{children}</div>
+    </div>
+  );
+};
+
 const TrivialApp = () => {
-  const [gameState, setGameState] = useState<GameState>('START');
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [scores, setScores] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0 });
+  // Inicialización con LocalStorage
+  const [gameState, setGameState] = useState<GameState>(() => (localStorage.getItem('gameState') as GameState) || 'START');
+  const [currentIdx, setCurrentIdx] = useState(() => Number(localStorage.getItem('currentIdx')) || 0);
+  const [scores, setScores] = useState<{ [key: number]: number }>(() => {
+    const saved = localStorage.getItem('scores');
+    return saved ? JSON.parse(saved) : { 1: 0, 2: 0, 3: 0 };
+  });
   const [visibleGroups, setVisibleGroups] = useState<number[]>([]);
+
+  // Sincronizar con LocalStorage cada vez que cambie algo
+  useEffect(() => {
+    localStorage.setItem('gameState', gameState);
+    localStorage.setItem('currentIdx', currentIdx.toString());
+    localStorage.setItem('scores', JSON.stringify(scores));
+  }, [gameState, currentIdx, scores]);
 
   useEffect(() => {
     if (gameState === 'GROUPS_INTRO') {
       const timers: any[] = [];
       setVisibleGroups([]);
-      
       [1, 2, 3].forEach((num, i) => {
         timers.push(setTimeout(() => {
           setVisibleGroups(prev => [...prev, num]);
         }, (i + 1) * 800));
       });
-      
-      timers.push(setTimeout(() => {
-        setGameState('READY');
-      }, 4000));
-
+      timers.push(setTimeout(() => setGameState('READY'), 4000));
       return () => timers.forEach(t => clearTimeout(t));
     }
   }, [gameState]);
+
+  const resetGame = () => {
+    localStorage.clear();
+    setGameState('START');
+    setCurrentIdx(0);
+    setScores({ 1: 0, 2: 0, 3: 0 });
+    setVisibleGroups([]);
+  };
 
   const assignPoint = (groupId: number | null) => {
     if (groupId !== null) {
       setScores(prev => ({ ...prev, [groupId]: prev[groupId] + 1 }));
     }
-    
     if (currentIdx < QUESTIONS.length - 1) {
       setCurrentIdx(prev => prev + 1);
       setGameState('QUESTION');
@@ -66,37 +117,48 @@ const TrivialApp = () => {
     }
   };
 
+  const getBackground = () => {
+    if (gameState === 'START') return BGS.FILM;
+    if (gameState === 'GROUPS_INTRO' || gameState === 'READY') return BGS.SEATS;
+    return BGS.CURTAIN;
+  };
+
   const renderContent = () => {
     switch (gameState) {
       case 'START':
         return (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-12 fade-in zoom-in">
-            <div className="relative">
-              <Star className="absolute -top-12 -left-12 w-16 h-16 text-[#f4d03f] animate-pulse" />
-              <h1 className="text-8xl font-black text-[#f5e6be] tracking-tighter drop-shadow-xl uppercase">
-                PREGUNTAS EN FAMILIA
-              </h1>
-              <Star className="absolute -bottom-12 -right-12 w-16 h-16 text-[#f4d03f] animate-pulse" />
-            </div>
-            <button 
-              onClick={() => setGameState('GROUPS_INTRO')}
-              className="px-16 py-6 bg-[#f4d03f] hover:bg-[#e4c02f] text-[#6b0f11] rounded-full text-3xl font-black transition-all transform hover:scale-110 active:scale-95 shadow-2xl hover:shadow-[#f4d03f]/30"
-            >
-              Comenzar Partida
-            </button>
+             <div className="bg-black/60 backdrop-blur-md p-14 rounded-[4rem] border-8 border-black shadow-[20px_20px_0px_0px_rgba(0,0,0,0.5)]">
+                <h1 className="text-8xl font-black text-[#f5e6be] tracking-tighter uppercase mb-10 drop-shadow-xl">
+                  PREGUNTAS EN FAMILIA
+                </h1>
+                <div className="flex flex-col gap-4 items-center">
+                  <button 
+                    onClick={() => setGameState('GROUPS_INTRO')}
+                    className="px-20 py-8 bg-[#f4d03f] hover:bg-[#e4c02f] text-black border-4 border-black rounded-full text-4xl font-black transition-all transform hover:scale-110 shadow-[10px_10px_0px_0px_#000]"
+                  >
+                    ¡A ESCENA!
+                  </button>
+                  {currentIdx > 0 && (
+                    <button 
+                      onClick={resetGame}
+                      className="text-[#f5e6be]/60 hover:text-[#f4d03f] text-sm font-bold flex items-center gap-2 transition-colors mt-4"
+                    >
+                      <RefreshCw className="w-4 h-4" /> REINICIAR TODO
+                    </button>
+                  )}
+                </div>
+             </div>
           </div>
         );
 
       case 'GROUPS_INTRO':
         return (
-          <div className="flex flex-col items-center justify-center h-full space-y-12">
-            <h2 className="text-5xl font-black text-[#f5e6be]/40 uppercase tracking-[0.2em]">EQUIPOS</h2>
+          <div className="flex flex-col items-center justify-center h-full space-y-16">
+            <h2 className="text-7xl font-black text-[#f4d03f] uppercase tracking-[0.4em] drop-shadow-[4px_4px_0px_#000]">EQUIPOS</h2>
             <div className="flex gap-16">
               {[1, 2, 3].map(num => (
-                <div 
-                  key={num} 
-                  className={`w-40 h-40 md:w-64 md:h-64 rounded-[2.5rem] bg-[#f5e6be] shadow-2xl flex items-center justify-center text-9xl font-black text-[#6b0f11] transition-all duration-700 transform ${visibleGroups.includes(num) ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}
-                >
+                <div key={num} className={`w-40 h-40 md:w-64 md:h-64 rounded-[3rem] bg-[#f5e6be] border-[8px] border-black shadow-[20px_20px_0px_0px_#000] flex items-center justify-center text-[10rem] font-black text-[#6b0f11] transition-all duration-700 transform ${visibleGroups.includes(num) ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}>
                   {num}
                 </div>
               ))}
@@ -106,15 +168,15 @@ const TrivialApp = () => {
 
       case 'READY':
         return (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-12 fade-in">
-            <h1 className="text-[12rem] font-black text-[#f4d03f] tracking-tighter animate-bounce drop-shadow-2xl">
-              ¿PREPARADAS?
-            </h1>
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-14 fade-in">
+            <div className="bg-black/80 p-20 rounded-full border-[10px] border-[#f4d03f] animate-pulse shadow-[0_0_50px_rgba(244,208,63,0.3)]">
+              <h1 className="text-[12rem] font-black text-[#f4d03f] tracking-tighter leading-none uppercase">¡LISTAS!</h1>
+            </div>
             <button 
               onClick={() => setGameState('QUESTION')}
-              className="group flex items-center gap-4 px-12 py-5 bg-[#f4d03f] hover:bg-[#e4c02f] text-[#6b0f11] rounded-full text-3xl font-black transition-all shadow-2xl transform hover:scale-105"
+              className="group flex items-center gap-6 px-16 py-8 bg-[#f4d03f] hover:bg-[#e4c02f] text-black border-4 border-black rounded-full text-5xl font-black transition-all shadow-[12px_12px_0px_0px_#000] transform hover:scale-110"
             >
-              ¡VAMOS ALLÁ! <ArrowRight className="w-10 h-10 group-hover:translate-x-3 transition-transform" />
+              ¡YA! <ArrowRight className="w-16 h-16 group-hover:translate-x-5 transition-transform" />
             </button>
           </div>
         );
@@ -123,92 +185,59 @@ const TrivialApp = () => {
       case 'ANSWER':
         const currentQ = QUESTIONS[currentIdx];
         const isAnswerMode = gameState === 'ANSWER';
-        
         return (
-          <div className="flex flex-col h-full max-w-6xl mx-auto py-8 fade-in">
-            <div className="flex justify-between items-end mb-12">
-              <div className="space-y-2">
-                <span className="text-[#f5e6be]/40 font-black text-2xl uppercase tracking-widest">Pregunta</span>
-                <div className="flex items-baseline gap-2">
-                   <span className="text-6xl font-black text-[#f4d03f]">{currentIdx + 1}</span>
-                   <span className="text-2xl font-bold text-[#f5e6be]/60">/ {QUESTIONS.length}</span>
-                </div>
+          <div className="flex flex-col h-full justify-center items-center py-8 fade-in relative px-4">
+            <div className="w-full max-w-5xl flex justify-between items-end mb-10">
+              <div className="bg-black px-8 py-3 rounded-2xl border-4 border-[#f4d03f] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.5)]">
+                <span className="text-[#f5e6be] font-black text-2xl uppercase tracking-widest">{currentIdx + 1} / {QUESTIONS.length}</span>
               </div>
               <div className="flex gap-6">
                 {[1, 2, 3].map(id => (
-                  <div key={id} className="bg-[#f5e6be] px-8 py-4 rounded-3xl shadow-lg border-b-8 border-[#f4d03f]/30 flex flex-col items-center min-w-[100px]">
-                    <span className="text-xs font-black text-[#6b0f11]/60 uppercase mb-1">Equipo {id}</span>
-                    <span className="text-4xl font-black text-[#6b0f11]">{scores[id]}</span>
+                  <div key={id} className="bg-[#f5e6be] px-6 py-2 rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_#000] flex items-center gap-3">
+                    <span className="text-sm font-black text-[#6b0f11]">E{id}</span>
+                    <span className="text-3xl font-black text-[#6b0f11]">{scores[id]}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="bg-[#f5e6be] rounded-[3.5rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] p-12 md:p-20 flex-1 flex flex-col justify-center relative overflow-hidden border border-[#f5e6be]/20">
-              <div className="absolute top-0 left-0 w-full h-3 bg-[#6b0f11]/10">
-                <div 
-                  className="h-full bg-gradient-to-r from-[#f4d03f] to-[#e4c02f] transition-all duration-700 ease-out" 
-                  style={{ width: `${((currentIdx + 1) / QUESTIONS.length) * 100}%` }}
-                />
-              </div>
-
-              <h2 className="text-4xl md:text-6xl font-black text-[#6b0f11] mb-16 leading-tight">
-                {currentQ.q}
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+            <BulbBorder>
+              <h2 className="text-3xl md:text-5xl font-black text-[#6b0f11] mb-14 leading-tight text-center">{currentQ.q}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-14">
                 {currentQ.options.map((option) => {
                   const letter = option.trim().charAt(0);
                   const isCorrect = isAnswerMode && letter === currentQ.correct;
                   return (
-                    <div 
-                      key={option}
-                      className={`p-8 rounded-3xl border-4 transition-all text-2xl font-bold flex items-center justify-between ${
-                        isCorrect 
-                          ? 'bg-green-100 border-green-600 text-green-900 scale-[1.03] shadow-xl' 
-                          : isAnswerMode ? 'bg-[#6b0f11]/5 border-[#6b0f11]/10 text-[#6b0f11]/30 opacity-60' : 'bg-[#6b0f11]/5 border-transparent text-[#6b0f11]'
-                      }`}
-                    >
+                    <div key={option} className={`p-6 rounded-[2rem] border-4 border-black transition-all text-2xl font-black flex items-center justify-between shadow-[8px_8px_0px_0px_#000] ${isCorrect ? 'bg-green-400 text-black scale-[1.05]' : isAnswerMode ? 'bg-black/10 text-black/20 shadow-none scale-95' : 'bg-white/60 text-[#6b0f11] hover:bg-white/80'}`}>
                       <span>{option}</span>
-                      {isCorrect && <CheckCircle2 className="w-10 h-10 text-green-600" />}
+                      {isCorrect && <CheckCircle2 className="w-10 h-10 text-black" />}
                     </div>
                   );
                 })}
               </div>
-
               {!isAnswerMode ? (
-                <div className="flex justify-end mt-auto">
-                  <button 
-                    onClick={() => setGameState('ANSWER')}
-                    className="group flex items-center gap-4 px-12 py-6 bg-[#6b0f11] hover:bg-[#5a0d0e] text-[#f4d03f] rounded-[2rem] text-3xl font-black transition-all shadow-2xl transform hover:-translate-y-1"
-                  >
-                    REVELAR RESPUESTA <ArrowRight className="w-8 h-8 group-hover:translate-x-2 transition-transform" />
+                <div className="flex justify-center">
+                  <button onClick={() => setGameState('ANSWER')} className="group flex items-center gap-6 px-16 py-7 bg-[#6b0f11] hover:bg-[#4a0a0b] text-[#f4d03f] rounded-[2.5rem] border-6 border-black text-4xl font-black transition-all shadow-[12px_12px_0px_0px_#000] transform hover:-translate-y-2">
+                    RESPUESTA <ArrowRight className="w-10 h-10 group-hover:translate-x-3 transition-transform" />
                   </button>
                 </div>
               ) : (
-                <div className="mt-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
-                  <h3 className="text-center text-[#6b0f11]/40 font-black uppercase tracking-[0.3em] text-sm mb-8">PUNTO PARA:</h3>
+                <div className="animate-in fade-in slide-in-from-bottom-8 duration-500">
+                  <h3 className="text-center text-[#6b0f11]/50 font-black uppercase tracking-[0.4em] text-xs mb-8 text-center">¿A QUIÉN LE DAMOS EL PUNTO?</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                     {[1, 2, 3].map(id => (
-                      <button 
-                        key={id}
-                        onClick={() => assignPoint(id)}
-                        className="group py-6 bg-[#f4d03f] hover:bg-[#6b0f11] hover:text-[#f4d03f] text-[#6b0f11] rounded-3xl font-black text-2xl transition-all border-b-8 border-[#6b0f11]/20 flex flex-col items-center gap-1 shadow-md"
-                      >
-                        <Award className="w-8 h-8 opacity-50 group-hover:opacity-100" />
+                      <button key={id} onClick={() => assignPoint(id)} className="group py-6 bg-[#f4d03f] hover:bg-green-500 hover:text-black text-[#6b0f11] rounded-2xl font-black text-2xl transition-all border-4 border-black shadow-[6px_6px_0px_0px_#000] active:shadow-none active:translate-x-1 active:translate-y-1">
                         EQUIPO {id}
                       </button>
                     ))}
-                    <button 
-                      onClick={() => assignPoint(null)}
-                      className="py-6 bg-[#6b0f11]/10 hover:bg-[#6b0f11]/20 text-[#6b0f11] rounded-3xl font-black text-2xl transition-all border-b-8 border-[#6b0f11]/30"
-                    >
-                      NADIE
-                    </button>
+                    <button onClick={() => assignPoint(null)} className="py-6 bg-black/10 hover:bg-black/20 text-black/60 rounded-2xl font-black text-2xl border-4 border-black">NADIE</button>
                   </div>
                 </div>
               )}
-            </div>
+            </BulbBorder>
+            <button onClick={resetGame} className="absolute bottom-4 left-4 text-white/40 hover:text-white flex items-center gap-2 text-xs font-bold transition-colors">
+              <RefreshCw className="w-3 h-3" /> REINICIAR PARTIDA
+            </button>
           </div>
         );
 
@@ -216,81 +245,44 @@ const TrivialApp = () => {
         const sortedScores = Object.entries(scores)
           .map(([id, score]) => ({ id: Number(id), score }))
           .sort((a, b) => b.score - a.score);
-
         return (
           <div className="flex flex-col items-center justify-center h-full max-w-5xl mx-auto text-center space-y-16 fade-in">
-            <div className="space-y-6">
-              <Trophy className="w-32 h-32 text-[#f4d03f] mx-auto animate-bounce drop-shadow-2xl" />
-              <h1 className="text-[7rem] font-black text-[#f5e6be] leading-none uppercase">¡RANKING FINAL!</h1>
+            <div className="bg-black/70 p-14 rounded-[4rem] border-8 border-[#f4d03f] shadow-[0_0_60px_rgba(244,208,63,0.4)]">
+              <Trophy className="w-32 h-32 text-[#f4d03f] mx-auto animate-bounce mb-6" />
+              <h1 className="text-[6rem] font-black text-[#f5e6be] uppercase leading-none tracking-tighter">¡EL REY DE LA PISTA!</h1>
             </div>
-
-            <div className="flex items-end justify-center gap-8 w-full px-8">
+            <div className="flex items-end justify-center gap-12 w-full px-12">
               {[sortedScores[1], sortedScores[0], sortedScores[2]].map((item, idx) => {
                 if (!item) return null;
-                const isWinner = item.id === sortedScores[0].id;
-                const heights = ["h-64", "h-96", "h-48"];
-                const colors = ["bg-[#f5e6be]/80", "bg-[#f4d03f]", "bg-[#f5e6be]/60"];
+                const heights = ["h-56", "h-80", "h-40"];
+                const colors = ["bg-[#f5e6be]/90", "bg-[#f4d03f]", "bg-[#f5e6be]/70"];
                 const labels = ["2º", "1º", "3º"];
-                const textColors = ["text-[#6b0f11]", "text-[#6b0f11]", "text-[#6b0f11]"];
-                
                 return (
-                  <div 
-                    key={item.id}
-                    className="flex flex-col items-center gap-6 flex-1 max-w-[280px]"
-                  >
-                    <div className="text-center space-y-2">
-                       <p className="text-5xl font-black text-[#f5e6be]">{item.score} <span className="text-xl text-[#f4d03f]">PTS</span></p>
-                       <p className="text-lg font-bold text-white uppercase tracking-widest">EQUIPO {item.id}</p>
+                  <div key={item.id} className="flex flex-col items-center gap-6 flex-1 max-w-[280px]">
+                    <div className="text-center bg-black p-5 rounded-3xl w-full border-4 border-[#f5e6be] shadow-[10px_10px_0px_0px_rgba(0,0,0,0.5)]">
+                       <p className="text-5xl font-black text-[#f5e6be]">{item.score} <span className="text-sm text-[#f4d03f]">PTS</span></p>
+                       <p className="text-sm font-bold text-white uppercase tracking-widest mt-1">EQUIPO {item.id}</p>
                     </div>
-                    <div 
-                      className={`${heights[idx]} ${colors[idx]} w-full rounded-t-[3rem] shadow-2xl flex items-center justify-center relative transition-all duration-1000 transform hover:scale-105`}
-                      style={{ animation: `slideUp 1s ease-out ${idx * 0.2}s forwards`, opacity: 0, transform: 'translateY(50px)' }}
-                    >
-                      <span className={`text-8xl font-black ${textColors[idx]} opacity-30`}>{labels[idx]}</span>
-                      {isWinner && <Star className="absolute -top-8 w-16 h-16 text-[#f4d03f] fill-[#f4d03f] animate-spin-slow" />}
+                    <div className={`${heights[idx]} ${colors[idx]} w-full rounded-t-[3rem] border-[8px] border-black shadow-[15px_0px_0px_0px_#000] flex items-center justify-center relative transition-all duration-1000 transform`}>
+                      <span className="text-8xl font-black text-black/20">{labels[idx]}</span>
+                      {item.id === sortedScores[0].id && (
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2"><Star className="w-20 h-20 text-[#f4d03f] fill-[#f4d03f] animate-spin" /></div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            <button 
-              onClick={() => {
-                setCurrentIdx(0);
-                setScores({ 1: 0, 2: 0, 3: 0 });
-                setGameState('START');
-              }}
-              className="flex items-center gap-3 px-12 py-6 bg-[#f4d03f] hover:bg-[#e4c02f] text-[#6b0f11] rounded-[2rem] text-2xl font-black transition-all shadow-2xl transform hover:scale-110"
-            >
-              <Home className="w-8 h-8" /> REINICIAR JUEGO
-            </button>
-            
-            <style>{`
-              @keyframes slideUp {
-                to { opacity: 1; transform: translateY(0); }
-              }
-              .animate-spin-slow {
-                animation: spin 8s linear infinite;
-              }
-              @keyframes spin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-              }
-            `}</style>
+            <button onClick={resetGame} className="px-14 py-8 bg-[#f4d03f] hover:bg-[#e4c02f] text-black border-6 border-black rounded-[2.5rem] text-3xl font-black transition-all shadow-[12px_12px_0px_0px_#000] transform hover:scale-110">NUEVA PARTIDA</button>
           </div>
         );
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#6b0f11] font-sans text-white overflow-hidden relative">
-      {/* Decorative Blobs updated for new palette */}
-      <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-[#f4d03f]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-black/20 rounded-full blur-[120px] pointer-events-none" />
-      
-      <main className="relative z-10 h-screen p-8 md:p-16">
-        {renderContent()}
-      </main>
+    <div className="min-h-screen bg-transition relative overflow-hidden" style={{ backgroundImage: getBackground() }}>
+      <div className="absolute inset-0 bg-black/30 pointer-events-none" />
+      <main className="relative z-10 h-screen">{renderContent()}</main>
     </div>
   );
 };
